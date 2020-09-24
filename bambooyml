@@ -1,0 +1,149 @@
+---
+version: 2
+plan:
+  project-key: RESP
+  key: PLAN1
+  name: Reg-App-Specs
+stages:
+- UNIT-TEST:
+    manual: false
+    final: false
+    jobs:
+    - UNIT-TEST
+- BUILD AND DEPLOY TO NEXUS:
+    manual: false
+    final: false
+    jobs:
+    - Package and Deploy
+- DOWNLOAD FROM NEXUS:
+    manual: false
+    final: false
+    jobs:
+    - Retrieve artifact from Nexus
+- DEPLOY TO VM:
+    manual: false
+    final: false
+    jobs:
+    - Deploy to VM
+UNIT-TEST:
+  key: JOB1
+  tasks:
+  - checkout:
+      force-clean-build: 'false'
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        mvn clean test
+        mvn sonar:sonar \
+          -Dsonar.projectKey=Demo-App \
+          -Dsonar.host.url=http://sonarqube.nxtsandbox.local \
+          -Dsonar.login=ad6a66c36c6d4164882290d6f8bf8749f4fb575c
+Package and Deploy:
+  key: PD
+  tasks:
+  - checkout:
+      force-clean-build: 'true'
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        mvn clean deploy -Dmaven.test.skip=true
+Retrieve artifact from Nexus:
+  key: RAFN
+  tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        echo "LISTING CURRENT FILES"
+        ls -latr
+        echo "REMOVING ALL THE FILES IF ANY:"
+        rm -rf account*
+        echo "Starting retrieving the artifact from nexus"
+        wget --user=admin --password=Aspirenxt@123 $(curl -u admin:Aspirenxt@123 -X GET "http://nexus.nxtsandbox.local/service/rest/v1/search/assets?repository=Demo-App&maven.groupId=com.hellokoding&maven.artifactId=account&maven.baseVersion=2.1-SNAPSHOT&maven.extension=war" -H  "accept: application/json"  | jq -rc '.items | .[].downloadUrl' | sort | tail -n 1)
+        ls -latr
+        echo "CREATING SYMLINK"
+        ln -s *.war account.war
+Deploy to VM:
+  key: DTV
+  tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        rm -rf *
+        ls -latr
+        cp ../DEM-UN-RAFN/account.war ./
+        ls -latr
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan:
+  key: DEM-UN
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+---
+version: 2
+plan:
+  project-key: RESP
+  key: PLAN2
+  name: Reg-App-Plan2
+stages:
+- UNIT-TEST:
+    manual: false
+    final: false
+    jobs:
+    - UNIT-TEST
+UNIT-TEST:
+  key: UNJ
+  tasks:
+  - checkout:
+      force-clean-build: 'true'
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        echo "STARTING UNIT-TEST"
+        mvn clean test
+        mvn sonar:sonar \
+          -Dsonar.projectKey=Demo-App \
+          -Dsonar.host.url=http://sonarqube.nxtsandbox.local \
+          -Dsonar.login=ad6a66c36c6d4164882290d6f8bf8749f4fb575c
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan:
+  key: DEM-PLAN2
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+---
+

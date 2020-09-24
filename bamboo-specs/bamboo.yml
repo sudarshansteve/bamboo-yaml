@@ -1,0 +1,335 @@
+---
+version: 2
+triggers: []
+plan:
+  project-key: E2E 
+  key: UN
+  name: UNIT-TEST
+stages:
+- UNIT-TEST:
+    manual: false
+    final: false
+    jobs:
+    - UNIT-TEST
+- UNIT-TEST-JIRA:
+    manual: false
+    final: true
+    jobs:
+    - UNIT-TEST-JIRA
+UNIT-TEST:
+  key: UT
+  tasks:
+  - checkout:
+      force-clean-build: 'true'
+  - maven:
+      executable: Maven
+      jdk: JDK 1.8
+      goal: |-
+        clean test
+        sonar:sonar
+          -Dsonar.projectKey=Demo-App
+          -Dsonar.host.url=http://sonarqube.nxtsandbox.local
+          -Dsonar.login=ad6a66c36c6d4164882290d6f8bf8749f4fb575c
+      tests: 'true'
+UNIT-TEST-JIRA:
+  key: UNJ
+# Checkout Task will be added implicitly during Specs import
+  final-tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        #!/bin/bash
+        curl --user sudarshan:Dev@123 -X GET http://bamboo.nxtsandbox.local/rest/api/latest/result/E2E-UN-UT-latest?expand=stages.stage.results.result.testResults >result.xml
+        xmllint -format -recover result.xml > jiraresult.xml
+        state=$(sed -nre 's:^.*<buildState>(.*)</buildState>.*$:\1:p' jiraresult.xml)
+        successcount=$(sed -nre 's:^.*<successfulTestCount>(.*)</successfulTestCount>.*$:\1:p' jiraresult.xml)
+        failedcount=$(sed -nre 's:^.*<failedTestCount>(.*)</failedTestCount>.*$:\1:p' jiraresult.xml)
+        echo "STATE: $state"
+        echo "SUCCESS-TEST-COUNT: $successcount"
+        echo "FAILED-TEST-COUNT: $failedcount"
+        echo "buildResultsUrl: ${bamboo.buildResultsUrl}"
+        echo "planKey: ${bamboo.planKey}"
+        echo "Build number: ${bamboo.buildNumber}"
+        echo '{"fields": {"project": {"key": "REG"},"summary": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE E2E-UN-UT-${bamboo.buildNumber} is failed ","description": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE E2ED-UN-UT-${bamboo.buildNumber} is failed. There were '$successcount' tests passed and '$failedcount' tests failed. Check the logs at http://bamboo.nxtsandbox.local/browse/${bamboo.planKey}-${bamboo.buildNumber}/log","issuetype": {"name": "Bug" }}}' > failed.txt
+        echo '{"fields": {"project": {"key": "REG"},"summary": "THE STAGE E2ED-CICD-UN under the plan ${bamboo.planName} HAS BEEN SUCCEDED","description": "THE BUILD E2ED-CICD-UN under the plan ${bamboo.planName} HAS BEEN SUCCEDED. Check the logs at http://bamboo.nxtsandbox.local/${bamboo.buildResultsUrl}/log ","issuetype": {"name": "Task"}}}' > success.txt
+
+        if [ "$state" = "Failed" ];
+        then
+           curl -u sudarshan:Dev@123 -X POST --data @failed.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        else
+            echo "STAGE PASSED"
+           #curl -u ${bamboo.jirausername}:${bamboo.jirapassword} -X POST --data @success.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        fi
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan: 
+  key: SPEC-UN
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+---
+version: 2
+triggers: []
+plan:
+  project-key: E2E
+  key: PK
+  name: Package
+stages:
+- BUILD AND DEPLOY TO NEXUS:
+    manual: false
+    final: false
+    jobs:
+    - Package and Deploy
+Package and Deploy:
+  key: PD
+  tasks:
+  - checkout:
+          force-clean-build: 'true'
+  - script:
+      interpreter: SHELL
+      scripts:
+      - mvn deploy -Dmaven.test.skip=true
+  final-tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        #!/bin/bash
+        #echo "BAMBOO BUILD HAS BEEN  ${bamboo_buildFailed}"
+        echo '{"fields": {"project": {"key": "REG"},"summary": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed","description": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed. Please check the logs at ${bamboo.buildResultsUrl}/log ","issuetype": {"name": "Bug" }}}' > failed.txt
+        echo '{"fields": {"project": {"key": "REG"},"summary": "THE PLAN ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED","description": "THE the plan ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED. Check the logs at http://bamboo.nxtsandbox.local/browse/${bamboo.planKey}-${bamboo.buildNumber} ","issuetype": {"name": "Task"}}}' > success.txt
+
+        if [ "${bamboo_buildFailed}" == "true" ];
+        then
+           curl -u ${bamboo.jirausernamepassword}:${bamboo.jirapassword} -X POST --data @failed.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        else
+        echo "PLAN PASSED"
+        #curl -u ${bamboo.jirausernamepassword}:${bamboo.jirapassword} -X POST --data @success.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        fi
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan:
+  key: SPEC-PK
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+---
+version: 2
+triggers: []
+plan:
+  project-key: E2E
+  key: RAFN
+  name: Retrieve artifact from nexus
+stages:
+- Default Stage:
+    manual: false
+    final: false
+    jobs:
+    - Retrieve Artifact from Nexus
+Retrieve Artifact from Nexus:
+  key: RAF
+  tasks:
+  - checkout:
+      force-clean-build: 'true'        
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        ARTIFACTID=$(mvn -q \
+        -Dexec.executable="echo" \
+        -Dexec.args='${project.artifactId}' \
+        --non-recursive \
+        org.codehaus.mojo:exec-maven-plugin:1.3.1:exec)
+        GROUPID=$(mvn -q \
+        -Dexec.executable="echo" \
+        -Dexec.args='${project.groupId}' \
+        --non-recursive \
+        org.codehaus.mojo:exec-maven-plugin:1.3.1:exec)
+        VERSION=$(mvn -q \
+        -Dexec.executable="echo" \
+        -Dexec.args='${project.version}' \
+        --non-recursive \
+        org.codehaus.mojo:exec-maven-plugin:1.3.1:exec)
+        PACKAGING=$(mvn -q \
+        -Dexec.executable="echo" \
+        -Dexec.args='${project.packaging}' \
+        --non-recursive \
+        org.codehaus.mojo:exec-maven-plugin:1.3.1:exec)
+        echo "ARTIFACTID = $ARTIFACTID"
+        echo "GROUPID = $GROUPID"
+        echo "VERSION = $VERSION"
+        echo "PACKAGING = $PACKAGING"
+        echo "LISTING CURRENT FILES"
+        ls -latr
+        echo "REMOVING ALL THE FILES IF ANY:"
+        rm -rf account*
+        echo "Starting retrieving the artifact from nexus"
+        wget --user=admin --password=Aspirenxt@123 $(curl -u admin:Aspirenxt@123 -X GET "http://nexus.nxtsandbox.local/service/rest/v1/search/assets?repository=Demo-App&maven.groupId=$GROUPID&maven.artifactId=$ARTIFACTID&maven.baseVersion=$VERSION&maven.extension=$PACKAGING" -H  "accept: application/json"  | jq -rc '.items | .[].downloadUrl' | sort | tail -n 1)
+        ls -latr
+        echo "CREATING SYMLINK"
+        ln -s *.war account.war
+  final-tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        #!/bin/bash
+        #echo "BAMBOO BUILD HAS BEEN  ${bamboo_buildFailed}"
+        echo '{"fields": {"project": {"key": "REG"},"summary": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed","description": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed. Please check the logs at ${bamboo.buildResultsUrl}/log ","issuetype": {"name": "Bug" }}}' > failed.txt
+        echo '{"fields": {"project": {"key": "REG"},"summary": "THE PLAN ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED","description": "THE the plan ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED. Check the logs at http://bamboo.nxtsandbox.local/browse/${bamboo.planKey}-${bamboo.buildNumber} ","issuetype": {"name": "Task"}}}' > success.txt
+
+        if [ "${bamboo_buildFailed}" == "true" ];
+        then
+           curl -u ${bamboo.jirausernamepassword}:${bamboo.jirapassword} -X POST --data @failed.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        else
+         echo "PLAN PASSED"  
+        #curl -u ${bamboo.jirausernamepassword}:${bamboo.jirapassword} -X POST --data @success.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        fi
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan:
+  key: SPEC-RAFN
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+---
+version: 2     
+triggers: []
+plan:
+  project-key: E2E
+  key: DTVM
+  name: Deploy to VM
+stages:
+- Deploy to VM:
+    manual: false
+    final: false
+    jobs:
+    - Deploy to VM
+Deploy to VM:
+  key: DTV
+  tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        echo "LISTING ALL THE FILES"
+        ls -latr
+        echo "REMOVING ALL THE FILES IF ANY TO OBTAIN THE LATEST VERSION OF ARTIFACT"
+        rm -rf *
+        rm -rf .git
+        echo "LISTING FILES AFTER REMOVAL"
+        ls -latr
+        echo "COPYING THE ARTIFACT FROM PREVIOUS PLAN"
+        cp ../E2E-RAFN-RAF/account.war ./
+        echo "LISTING FILES AFTER COPYING THE ARTIFACT"
+        ls -latr
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        #!/usr/bin/expect -f
+
+        # connect via scp
+        spawn scp ./account.war root@${bamboo.ahostip}:/home
+
+        #######################
+        expect {
+          -re ".*es.*o.*" {
+            exp_send "yes\r"
+            exp_continue
+          }
+          -re ".*sword.*" {
+            exp_send "${bamboo.devpassword}\r"
+          }
+        }
+        interact        
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        sshpass -p "${bamboo.devpassword}" ssh -o StrictHostKeyChecking=no root@${bamboo.ahostip} sudo cp /home/account.war /usr/share/tomcat/webapps/
+        sshpass -p "${bamboo.devpassword}" ssh -o StrictHostKeyChecking=no root@${bamboo.ahostip} sudo chown tomcat:tomcat /usr/share/tomcat/webapps/account.war
+        sshpass -p "${bamboo.devpassword}" ssh -o StrictHostKeyChecking=no root@${bamboo.ahostip} sudo service tomcat restart         
+  final-tasks:
+  - script:
+      interpreter: SHELL
+      scripts:
+      - |-
+        #!/bin/bash
+        #echo "BAMBOO BUILD HAS BEEN  ${bamboo_buildFailed}"
+        echo '{"fields": {"project": {"key": "REG"},"summary": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed","description": "The plan ${bamboo.planKey}-${bamboo.buildNumber} failed since STAGE ${bamboo.buildResultKey} failed. Please check the logs at ${bamboo.buildResultsUrl}/log ","issuetype": {"name": "Bug" }}}' > failed.txt
+        echo '{"fields": {"project": {"key": "REG"},"summary": "THE PLAN ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED","description": "THE the plan ${bamboo.planName} ${bamboo.buildNumber} HAS BEEN SUCCEDED. Check the logs at http://bamboo.nxtsandbox.local/browse/${bamboo.planKey}-${bamboo.buildNumber} ","issuetype": {"name": "Task"}}}' > success.txt
+
+        if [ "${bamboo_buildFailed}" == "true" ];
+        then
+            curl -u ${bamboo.jirausername}:${bamboo.jirapassword} -X POST --data @failed.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        else
+         echo "PLAN PASSED"
+        #curl -u ${bamboo.jirausernamepassword}:${bamboo.jirapassword} -X POST --data @success.txt -H "Content-Type: application/json" http://jira.nxtsandbox.local/rest/api/2/issue/
+        fi
+branches:
+  create: manually
+  delete: never
+  link-to-jira: true
+notifications: []
+labels: []
+other:
+  concurrent-build-plugin: system-default
+---
+version: 2
+plan:
+  key: SPEC-DTVM
+plan-permissions:
+- users:
+  - devopsadmin
+  permissions:
+  - view
+  - edit
+  - build
+  - clone
+  - admin
+...
+
